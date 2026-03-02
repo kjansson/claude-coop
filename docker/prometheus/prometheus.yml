@@ -11,14 +11,11 @@ scrape_configs:
         labels:
           instance: "envoy-proxy"
 
-  # ── Claude Code native OTel metrics ────────────
+  # ── Claude Code metrics (Prometheus exporter) ─
   - job_name: "claude"
     metrics_path: /metrics
-    scrape_interval: 15s
     static_configs:
       - targets: ["claude:9464"]
-        labels:
-          instance: "claude-code"
 
   # ── Prometheus self-monitoring ─────────────────
   - job_name: "prometheus"

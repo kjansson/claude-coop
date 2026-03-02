@@ -20,7 +20,6 @@ ENVOY_CONTAINER="${PREFIX}-envoy"
 PROMETHEUS_CONTAINER="${PREFIX}-prometheus"
 GRAFANA_CONTAINER="${PREFIX}-grafana"
 CLAUDE_CONTAINER="${PREFIX}-claude"
-
 PROMETHEUS_VOLUME="${PREFIX}-prometheus-data"
 
 GRAFANA_PORT="${GRAFANA_PORT:-3000}"
@@ -168,6 +167,7 @@ log "Starting Envoy proxy..."
 docker run -d \
     --name "${ENVOY_CONTAINER}" \
     --network "${NETWORK_NAME}" \
+    --network-alias envoy \
     --restart unless-stopped \
     -p "${ENVOY_ADMIN_PORT}:9901" \
     "${PREFIX}-envoy-img"
@@ -179,6 +179,7 @@ log "Starting Prometheus..."
 docker run -d \
     --name "${PROMETHEUS_CONTAINER}" \
     --network "${NETWORK_NAME}" \
+    --network-alias prometheus \
     --restart unless-stopped \
     -v "${DOCKER_DIR}/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
     -v "${PROMETHEUS_VOLUME}:/prometheus" \
@@ -196,6 +197,7 @@ log "Starting Grafana..."
 docker run -d \
     --name "${GRAFANA_CONTAINER}" \
     --network "${NETWORK_NAME}" \
+    --network-alias grafana \
     --restart unless-stopped \
     -v "${DOCKER_DIR}/grafana/provisioning:/etc/grafana/provisioning:ro" \
     -v "${DOCKER_DIR}/grafana/dashboards:/var/lib/grafana/dashboards:ro" \
@@ -246,6 +248,7 @@ echo ""
 docker run -it --rm \
     --name "${CLAUDE_CONTAINER}" \
     --network "${NETWORK_NAME}" \
+    --network-alias claude \
     --cap-add NET_ADMIN \
     --hostname claude-code \
     -v "${MOUNT_DIR}:/workspace" \
@@ -256,7 +259,5 @@ docker run -it --rm \
     -e TERM="${TERM:-xterm-256color}" \
     -e CLAUDE_CODE_ENABLE_TELEMETRY=1 \
     -e OTEL_METRICS_EXPORTER=prometheus \
-    -e OTEL_LOGS_EXPORTER=console \
-    -e OTEL_METRIC_EXPORT_INTERVAL=15000 \
-    -e OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative \
+    -p 9464:9464 \
     "${PREFIX}-claude-img"

@@ -35,27 +35,50 @@ iptables -t nat -A OUTPUT -p tcp --dport 80 -j DNAT --to-destination "${RESOLVED
 iptables -t nat -A OUTPUT -p tcp --dport 443 -j DNAT --to-destination "${RESOLVED_ENVOY_IP}:${ENVOY_HTTPS_PORT}"
 iptables -t nat -A POSTROUTING -j MASQUERADE
 
-# ── Filter rules: lock down egress to only Envoy + DNS ────────
+# ── Detect Docker network subnet for inter-container traffic ──
+DOCKER_SUBNET=$(ip route | grep -v default | grep 'src' | head -1 | awk '{print $1}')
+echo "Docker network subnet: ${DOCKER_SUBNET}"
+
+# ── Filter rules: lock down egress ────────────────────────────
 # Allow loopback (includes Docker embedded DNS at 127.0.0.11)
 iptables -A OUTPUT -o lo -j ACCEPT
 # Allow already-established connections (return traffic)
 iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-# Allow all traffic to the Envoy proxy (covers DNAT'd packets)
-iptables -A OUTPUT -d "${RESOLVED_ENVOY_IP}" -j ACCEPT
+# Allow all traffic within the Docker network (Envoy, Prometheus, etc.)
+if [ -n "${DOCKER_SUBNET}" ]; then
+    iptables -A OUTPUT -d "${DOCKER_SUBNET}" -j ACCEPT
+else
+    # Fallback: allow only Envoy
+    iptables -A OUTPUT -d "${RESOLVED_ENVOY_IP}" -j ACCEPT
+fi
 # Drop everything else — no direct internet access
 iptables -A OUTPUT -j DROP
 
 echo "iptables rules applied:"
 echo "  - HTTP  :80  → ${RESOLVED_ENVOY_IP}:${ENVOY_HTTP_PORT}"
 echo "  - HTTPS :443 → ${RESOLVED_ENVOY_IP}:${ENVOY_HTTPS_PORT}"
+echo "  - Docker subnet ${DOCKER_SUBNET}: ALLOWED"
 echo "  - All other egress: BLOCKED"
 
 # Drop to the claude user and start Claude Code
-# Native OTel Prometheus exporter is configured via environment variables
-# passed in by the launcher script (CLAUDE_CODE_ENABLE_TELEMETRY, etc.)
+# gosu preserves the full environment (unlike su which can strip vars via PAM)
+export HOME=/home/claude
+export USER=claude
+
 echo ""
-echo "Starting Claude Code (OTel metrics on :9464)..."
+echo "Testing connectivity to Prometheus OTLP receiver..."
+if curl -sf -o /dev/null --max-time 5 "http://prometheus:9090/-/healthy" 2>/dev/null; then
+    echo "  ✓ Prometheus is healthy (OTLP endpoint: http://prometheus:9090/api/v1/otlp)"
+else
+    echo "  ✗ WARNING: Cannot reach Prometheus"
+fi
+
+echo ""
+echo "OTel environment:"
+env | grep -E '^(OTEL_|CLAUDE_CODE_ENABLE)' | sort
+echo ""
+echo "Starting Claude Code (OTel metrics → Prometheus OTLP receiver)..."
 echo "============================================"
 echo ""
 
-exec su - claude -c "cd /workspace && claude"
+exec gosu claude bash -c "cd /workspace && exec claude"

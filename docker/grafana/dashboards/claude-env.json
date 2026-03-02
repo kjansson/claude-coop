@@ -14,7 +14,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -30,25 +30,25 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "rate(claude_code_token_usage_tokens_total{type=\"input\"}[5m])",
+          "expr": "rate(claude_code_token_usage_total{type=\"input\"}[5m])",
           "legendFormat": "Input tokens/s"
         },
         {
-          "expr": "rate(claude_code_token_usage_tokens_total{type=\"output\"}[5m])",
+          "expr": "rate(claude_code_token_usage_total{type=\"output\"}[5m])",
           "legendFormat": "Output tokens/s"
         },
         {
-          "expr": "rate(claude_code_token_usage_tokens_total{type=\"cacheRead\"}[5m])",
+          "expr": "rate(claude_code_token_usage_total{type=\"cacheRead\"}[5m])",
           "legendFormat": "Cache read tokens/s"
         },
         {
-          "expr": "rate(claude_code_token_usage_tokens_total{type=\"cacheCreation\"}[5m])",
+          "expr": "rate(claude_code_token_usage_total{type=\"cacheCreation\"}[5m])",
           "legendFormat": "Cache creation tokens/s"
         }
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -64,13 +64,13 @@
       "type": "stat",
       "targets": [
         {
-          "expr": "claude_code_cost_usage_usd_total",
+          "expr": "sum(claude_code_cost_usage_total)",
           "legendFormat": "Cost USD"
         }
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -86,13 +86,13 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "rate(claude_code_cost_usage_usd_total[5m])",
+          "expr": "rate(claude_code_cost_usage_total[5m])",
           "legendFormat": "{{model}}"
         }
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -104,21 +104,17 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
       "id": 4,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "title": "Lines of Code Modified",
+      "title": "Token Usage by Model",
       "type": "timeseries",
       "targets": [
         {
-          "expr": "rate(claude_code_lines_of_code_count_total{type=\"added\"}[5m])",
-          "legendFormat": "Lines added"
-        },
-        {
-          "expr": "rate(claude_code_lines_of_code_count_total{type=\"removed\"}[5m]) * -1",
-          "legendFormat": "Lines removed"
+          "expr": "rate(claude_code_token_usage_total[5m])",
+          "legendFormat": "{{model}} ({{type}})"
         }
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -140,7 +136,7 @@
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -152,17 +148,17 @@
       "gridPos": { "h": 4, "w": 4, "x": 16, "y": 9 },
       "id": 6,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background" },
-      "title": "Commits",
+      "title": "Input Tokens",
       "type": "stat",
       "targets": [
         {
-          "expr": "claude_code_commit_count_total",
-          "legendFormat": "Commits"
+          "expr": "sum(claude_code_token_usage_total{type=\"input\"})",
+          "legendFormat": "Input"
         }
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -174,17 +170,17 @@
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 9 },
       "id": 7,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background" },
-      "title": "Pull Requests",
+      "title": "Output Tokens",
       "type": "stat",
       "targets": [
         {
-          "expr": "claude_code_pull_request_count_total",
-          "legendFormat": "PRs"
+          "expr": "sum(claude_code_token_usage_total{type=\"output\"})",
+          "legendFormat": "Output"
         }
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -200,17 +196,17 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "rate(claude_code_active_time_total_s_total{type=\"user\"}[5m])",
+          "expr": "rate(claude_code_active_time_total{type=\"user\"}[5m])",
           "legendFormat": "User interaction"
         },
         {
-          "expr": "rate(claude_code_active_time_total_s_total{type=\"cli\"}[5m])",
+          "expr": "rate(claude_code_active_time_total{type=\"cli\"}[5m])",
           "legendFormat": "CLI processing"
         }
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -222,21 +218,17 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
       "id": 9,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "title": "Code Edit Decisions",
+      "title": "Cost by Model",
       "type": "timeseries",
       "targets": [
         {
-          "expr": "rate(claude_code_code_edit_tool_decision_total{decision=\"accept\"}[5m])",
-          "legendFormat": "{{tool_name}} accepted"
-        },
-        {
-          "expr": "rate(claude_code_code_edit_tool_decision_total{decision=\"reject\"}[5m])",
-          "legendFormat": "{{tool_name}} rejected"
+          "expr": "claude_code_cost_usage_total",
+          "legendFormat": "{{model}}"
         }
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -252,7 +244,7 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "claude_code_token_usage_tokens_total",
+          "expr": "claude_code_token_usage_total",
           "legendFormat": "{{type}} ({{model}})"
         }
       ]
@@ -265,7 +257,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -291,7 +283,7 @@
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -317,7 +309,7 @@
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -343,7 +335,7 @@
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -380,7 +372,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -406,7 +398,7 @@
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -432,7 +424,7 @@
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -458,7 +450,7 @@
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -480,7 +472,7 @@
       ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },

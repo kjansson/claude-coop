@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
     vim \
     less \
     procps \
-    sudo \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Claude Code globally
