@@ -1,0 +1,26 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # ── Envoy admin metrics ────────────────────────
+  - job_name: "envoy"
+    metrics_path: /stats/prometheus
+    static_configs:
+      - targets: ["envoy:9901"]
+        labels:
+          instance: "envoy-proxy"
+
+  # ── Claude Code native OTel metrics ────────────
+  - job_name: "claude"
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["claude:9464"]
+        labels:
+          instance: "claude-code"
+
+  # ── Prometheus self-monitoring ─────────────────
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
