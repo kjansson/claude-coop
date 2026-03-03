@@ -1,6 +1,81 @@
-# Claude Code Docker Environment
+# claude-env
 
-A confined Docker environment for running [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with network-level security controls, traffic monitoring, and observability.
+A sandboxed Docker environment for running [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with network confinement, traffic control, and full observability.
+
+## Why claude-env?
+
+### Isolation
+
+Claude Code runs inside a Docker container on an internal-only network with no direct internet access. All outbound traffic on ports 80/443 is transparently redirected through an Envoy proxy via iptables DNAT rules. The container runs as a non-root user — `NET_ADMIN` is granted solely for iptables setup during entrypoint, then privileges are dropped via `gosu`. The agent cannot bypass the proxy, reach arbitrary hosts, or escalate privileges.
+
+### Dynamic Domain Whitelisting
+
+Envoy inspects every outbound connection — SNI for HTTPS, `Host` header for HTTP — and only forwards traffic to domains listed in `config/domains.txt`. Everything else hits a blackhole cluster or gets a 403. The whitelist is fully manageable at runtime:
+
+```bash
+./scripts/whitelist.sh add example.com *.example.com   # add domains
+./scripts/whitelist.sh apply                            # regenerate config + restart Envoy
+./scripts/claude-env.sh --whitelist extra.com           # or pass temporary domains at launch
+```
+
+### Persistent Session and Memory per Workspace
+
+Each workspace gets its own namespaced Docker volumes (keyed by directory path hash), so Claude Code's `~/.claude/` directory — including session history, project memory, and authentication tokens — survives across container restarts. Prometheus data is also retained per-workspace with 30-day TSDB retention. Launch the same project directory again and everything picks up where you left off.
+
+### Observability
+
+A Prometheus + Grafana stack runs alongside the Claude container. Prometheus scrapes three metric sources every 15 seconds, and a pre-provisioned Grafana dashboard (http://localhost:3000, no login required) gives you live visibility into token usage rates, session costs, context window pressure, code changes, and all Envoy traffic — including blocked connection attempts.
+
+### Custom Metrics
+
+Beyond Claude Code's native OpenTelemetry metrics, claude-env instruments two additional metric sources via Claude Code's hooks and statusline systems:
+
+- **Statusline metrics** — context window usage %, current/total tokens by type, session cost, lines added/removed
+- **Hook metrics** — tool invocation counts by name, tool errors, context compaction events, subagent lifecycle, turns by stop reason
+
+These are aggregated by a lightweight Node.js server on port 9465 and scraped by Prometheus alongside everything else.
+
+## Quick Start
+
+### Prerequisites
+
+- Docker installed and running
+- `ANTHROPIC_API_KEY` environment variable set
+
+### Launch
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+./scripts/claude-env.sh
+```
+
+This will:
+1. Build the custom Docker images (first run only)
+2. Generate the Envoy config from the domain whitelist
+3. Create an isolated Docker network
+4. Start Envoy, Prometheus, and Grafana
+5. Launch an interactive Claude Code session with your current directory mounted
+
+### Options
+
+```bash
+./scripts/claude-env.sh --build                          # Force rebuild images
+./scripts/claude-env.sh --whitelist example.com,*.example.org  # Extra domains for this session
+./scripts/claude-env.sh /path/to/project                 # Mount a specific directory
+./scripts/claude-env.sh --grafana-port 8080 --prometheus-port 9999  # Custom ports
+./scripts/claude-env.sh --teams                          # Enable Agent Teams (experimental)
+```
+
+### Cleanup
+
+Containers and the Docker network are removed automatically when you exit the Claude Code session (Ctrl+C or `/exit`).
+
+Persistent volumes are preserved across sessions. To remove them:
+
+```bash
+docker volume rm claude-env-<project-id>-prometheus-data
+docker volume rm claude-env-<project-id>-claude-config
+```
 
 ## Architecture
 
@@ -34,8 +109,6 @@ A confined Docker environment for running [Claude Code](https://docs.anthropic.c
                                               └────────────────────┘
 ```
 
-**Key security property:** The Claude Code container is on an internal-only Docker network. It cannot reach the internet directly. All TCP traffic on ports 80/443 is redirected via iptables DNAT rules to the Envoy proxy, which enforces a domain whitelist. Only the Envoy container has external network access.
-
 ## Components
 
 | Component | Purpose | Image |
@@ -44,55 +117,6 @@ A confined Docker environment for running [Claude Code](https://docs.anthropic.c
 | **Envoy Proxy** | Domain-whitelisting egress proxy | Custom (envoyproxy/envoy v1.31) |
 | **Prometheus** | Metrics collection and storage | `prom/prometheus:latest` |
 | **Grafana** | Metrics visualization dashboards | `grafana/grafana:latest` |
-
-## Quick Start
-
-### Prerequisites
-
-- Docker installed and running
-- `ANTHROPIC_API_KEY` environment variable set
-
-### Launch
-
-```bash
-# From any directory you want to use as workspace:
-export ANTHROPIC_API_KEY="sk-ant-..."
-./scripts/claude-env.sh
-```
-
-This will:
-1. Build the custom Docker images (first run only)
-2. Generate the Envoy config from the domain whitelist
-3. Create an isolated Docker network
-4. Start Envoy, Prometheus, and Grafana
-5. Launch an interactive Claude Code session with your current directory mounted
-
-### Options
-
-```bash
-# Force rebuild of images
-./scripts/claude-env.sh --build
-
-# Add extra domains for this session (comma-separated)
-./scripts/claude-env.sh --whitelist example.com,*.example.org
-
-# Mount a specific directory
-./scripts/claude-env.sh /path/to/project
-
-# Custom ports
-./scripts/claude-env.sh --grafana-port 8080 --prometheus-port 9999
-```
-
-### Cleanup
-
-Everything is cleaned up automatically when you exit the Claude Code session (Ctrl+C or `/exit`). The trap handler removes all containers and the Docker network.
-
-Persistent volumes are preserved across sessions. To remove them:
-
-```bash
-docker volume rm claude-env-prometheus-data
-docker volume rm claude-env-claude-config
-```
 
 ## Domain Whitelist
 
@@ -105,50 +129,28 @@ Allowed domains are defined in `config/domains.txt` — one domain per line, wit
 | `anthropic.com` / `*.anthropic.com` | Claude API, feature flags |
 | `claude.com` / `*.claude.com` | Claude documentation |
 | `sentry.io` / `*.sentry.io` | Error reporting |
-| `registry.npmjs.org` | npm packages |
-| `github.com` / `api.github.com` | GitHub access |
+| `registry.npmjs.org` / `*.npmjs.org` | npm registry |
+| `npmjs.com` / `*.npmjs.com` | npm web / documentation |
+| `github.com` / `*.github.com` | GitHub access |
+| `*.githubusercontent.com` | GitHub raw content, releases, gists |
+| `pypi.org` / `*.pypi.org` | Python packages |
 | `envoyproxy.io` / `*.envoyproxy.io` | Envoy documentation |
 | `*.golang.org` | Go documentation |
 | `*.prometheus.io` | Prometheus documentation |
 
 ### Managing the Whitelist
 
-Use the `whitelist.sh` helper:
-
 ```bash
-# List current domains
-./scripts/whitelist.sh list
-
-# Add domains
-./scripts/whitelist.sh add example.com *.example.com
-
-# Remove a domain
-./scripts/whitelist.sh remove example.com
-
-# Regenerate Envoy config from domains.txt
-./scripts/whitelist.sh generate
-
-# Regenerate config and restart Envoy (live update)
-./scripts/whitelist.sh apply
+./scripts/whitelist.sh list                      # List current domains
+./scripts/whitelist.sh add example.com *.example.com  # Add domains
+./scripts/whitelist.sh remove example.com        # Remove a domain
+./scripts/whitelist.sh generate                  # Regenerate Envoy config
+./scripts/whitelist.sh apply                     # Regenerate + restart Envoy (live update)
 ```
 
 Or edit `config/domains.txt` directly and run `./scripts/whitelist.sh apply`.
 
-You can also pass temporary extra domains at launch time:
-
-```bash
-./scripts/claude-env.sh --whitelist extra.com,*.extra.org
-```
-
-## Monitoring
-
-Metrics are collected from three sources and scraped by Prometheus:
-
-| Endpoint | Port | Source |
-|----------|------|--------|
-| Claude OTel | 9464 | Native OpenTelemetry (built into Claude Code) |
-| Custom metrics | 9465 | Statusline + hooks scripts |
-| Envoy admin | 9901 | Envoy's built-in stats |
+## Metrics Reference
 
 ### Native OTel Metrics (port 9464)
 
@@ -165,11 +167,9 @@ Claude Code's [native OpenTelemetry support](https://code.claude.com/docs/en/mon
 | `claude_code.active_time.total` | Active time (seconds) |
 | `claude_code.code_edit_tool.decision` | Edit accept/reject counts |
 
-### Custom Metrics (port 9465)
+### Custom Statusline Metrics (port 9465)
 
-A lightweight metrics server (`metrics-server.mjs`) aggregates output from two scripts:
-
-**Statusline metrics** (`statusline.sh`) — invoked by Claude Code's status line handler:
+Collected via Claude Code's statusline handler (`statusline.sh`):
 
 | Metric | Description |
 |--------|-------------|
@@ -178,7 +178,9 @@ A lightweight metrics server (`metrics-server.mjs`) aggregates output from two s
 | `claude_statusline_total_cost_usd` | Total session cost |
 | `claude_statusline_exceeds_200k_tokens` | Binary flag for high usage |
 
-**Hook metrics** (`hooks-metrics.sh`) — invoked by Claude Code hooks:
+### Custom Hook Metrics (port 9465)
+
+Collected via Claude Code hooks (`hooks-metrics.sh`):
 
 | Metric | Description |
 |--------|-------------|
@@ -191,7 +193,7 @@ A lightweight metrics server (`metrics-server.mjs`) aggregates output from two s
 
 ### Grafana Dashboard
 
-Open http://localhost:3000 (default: anonymous access, no login needed).
+Open http://localhost:3000 (anonymous access, no login needed).
 
 The pre-provisioned **Claude Code Environment** dashboard shows:
 
@@ -203,22 +205,12 @@ The pre-provisioned **Claude Code Environment** dashboard shows:
 
 Direct access at http://localhost:9090 for ad-hoc queries.
 
-Useful queries:
 ```promql
-# Total cost this session
-claude_code_cost_usage_usd_total
-
-# Token consumption rate by type
-rate(claude_code_token_usage_tokens_total[5m])
-
-# Context window usage
-claude_statusline_context_window_used_percent
-
-# Tool usage breakdown
-claude_hook_tool_use_total
-
-# HTTPS connections blocked in last 5 minutes
-increase(envoy_tcp_https_blocked_cx_total[5m])
+claude_code_cost_usage_usd_total                       # Total cost this session
+rate(claude_code_token_usage_tokens_total[5m])         # Token consumption rate by type
+claude_statusline_context_window_used_percent           # Context window usage
+claude_hook_tool_use_total                              # Tool usage breakdown
+increase(envoy_tcp_https_blocked_cx_total[5m])         # HTTPS connections blocked (5m)
 ```
 
 ### Envoy Admin
@@ -230,15 +222,13 @@ http://localhost:9901 provides direct access to Envoy's admin interface:
 
 ## How the Network Confinement Works
 
-1. **Internal network:** The Docker network is created with `--internal`, meaning containers on it have no default route to the internet.
+1. **Internal network:** The Docker network is created as a bridge with no default route to the internet. Only the Envoy container is dual-homed on both the internal and an external network.
 
-2. **Dual-network Envoy:** The Envoy container is connected to both the internal network and a regular (external) bridge network, making it the only container that can reach the internet.
+2. **iptables DNAT:** Inside the Claude container, iptables rules transparently redirect all outgoing TCP on ports 80 and 443 to Envoy's listener ports (10000/10001). An egress firewall drops everything else except loopback, established connections, and internal-network traffic.
 
-3. **iptables DNAT:** Inside the Claude container, iptables rules transparently redirect all outgoing TCP connections on ports 80 and 443 to the Envoy proxy's listener ports (10000/10001). The `NET_ADMIN` capability is granted solely for this purpose.
+3. **SNI inspection:** For HTTPS, Envoy uses `tls_inspector` to read the SNI from the TLS ClientHello. Only whitelisted SNI names are forwarded; everything else hits a blackhole cluster.
 
-4. **SNI inspection:** For HTTPS traffic, Envoy uses `tls_inspector` to read the Server Name Indication (SNI) from the TLS ClientHello. Only connections to whitelisted SNI names are forwarded via the dynamic forward proxy; everything else hits a blackhole cluster.
-
-5. **HTTP Lua filter:** For HTTP traffic, a Lua filter checks the `Host` header against the whitelist and returns 403 for blocked domains.
+4. **HTTP Lua filter:** For HTTP, a Lua filter checks the `Host` header against the whitelist and returns 403 for blocked domains.
 
 ## File Structure
 

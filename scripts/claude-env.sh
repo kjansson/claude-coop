@@ -4,7 +4,7 @@
 # with Envoy proxy whitelisting, Prometheus metrics, and Grafana dashboards.
 #
 # Usage:
-#   ./claude-env.sh [--build] [--yolo] [--whitelist domain1,domain2,...]
+#   ./claude-env.sh [--build] [--yolo] [--teams] [--whitelist domain1,domain2,...]
 #                   [--grafana-port PORT] [--cleanup]
 #
 set -euo pipefail
@@ -42,6 +42,7 @@ fi
 BUILD=false
 CLEANUP=false
 YOLO=false
+TEAMS=false
 EXTRA_WHITELIST=""
 
 # ─── Parse args ────────────────────────────────────────────────
@@ -57,6 +58,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --yolo)
             YOLO=true
+            shift
+            ;;
+        --teams)
+            TEAMS=true
             shift
             ;;
         --whitelist)
@@ -325,6 +330,9 @@ echo -e "  ${GREEN}Envoy Admin:${NC} http://localhost:${ENVOY_ADMIN_PORT}"
 if [[ "${YOLO}" == true ]]; then
 echo -e "  ${GREEN}YOLO mode:${NC}   ${RED}ENABLED${NC} (no permission prompts)"
 fi
+if [[ "${TEAMS}" == true ]]; then
+echo -e "  ${GREEN}Agent Teams:${NC} ${YELLOW}ENABLED${NC} (experimental)"
+fi
 echo -e ""
 echo -e "  All outgoing traffic is filtered through the Envoy proxy."
 echo -e "  Only whitelisted domains are allowed."
@@ -353,6 +361,7 @@ ${DOCKER} run -it --rm \
     -e CLAUDE_CODE_ENABLE_TELEMETRY=1 \
     -e OTEL_METRICS_EXPORTER=prometheus \
     -e CLAUDE_YOLO="${YOLO}" \
+    -e CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS="${TEAMS}" \
     -e WORKSPACE_NAME="${PROJECT_BASENAME}" \
     -p 9464:9464 \
     -p 9465:9465 \

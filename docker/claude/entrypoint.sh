@@ -114,16 +114,22 @@ echo ""
 # ── Write static environment info metrics ─────────────────
 YOLO_INT=0
 if [ "${CLAUDE_YOLO:-false}" = "true" ]; then YOLO_INT=1; fi
+TEAMS_INT=0
+if [ "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-false}" = "true" ]; then TEAMS_INT=1; fi
 cat > /tmp/claude-env-info.prom <<PROM
 # HELP claude_env_info Environment info for this Claude Code session.
 # TYPE claude_env_info gauge
-claude_env_info{workspace="${WORKSPACE_NAME:-unknown}",yolo_mode="${CLAUDE_YOLO:-false}"} 1
+claude_env_info{workspace="${WORKSPACE_NAME:-unknown}",yolo_mode="${CLAUDE_YOLO:-false}",teams_mode="${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-false}"} 1
 
 # HELP claude_env_yolo_mode Whether YOLO mode (--dangerously-skip-permissions) is enabled (1) or not (0).
 # TYPE claude_env_yolo_mode gauge
 claude_env_yolo_mode ${YOLO_INT}
+
+# HELP claude_env_teams_mode Whether Agent Teams mode is enabled (1) or not (0).
+# TYPE claude_env_teams_mode gauge
+claude_env_teams_mode ${TEAMS_INT}
 PROM
-echo "Environment info metrics written (workspace=${WORKSPACE_NAME:-unknown}, yolo=${CLAUDE_YOLO:-false})"
+echo "Environment info metrics written (workspace=${WORKSPACE_NAME:-unknown}, yolo=${CLAUDE_YOLO:-false}, teams=${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-false})"
 
 # ── Start the status-line metrics HTTP server (port 9465) ─
 echo "Starting status-line metrics server on :9465..."

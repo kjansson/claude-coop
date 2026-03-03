@@ -9,9 +9,15 @@ claude.com
 sentry.io
 *.sentry.io
 registry.npmjs.org
+*.npmjs.org
+npmjs.com
+*.npmjs.com
 github.com
-api.github.com
+*.github.com
+*.githubusercontent.com
 envoyproxy.io
 *.envoyproxy.io
 *.golang.org
 *.prometheus.io
+pypi.org
+*.pypi.org

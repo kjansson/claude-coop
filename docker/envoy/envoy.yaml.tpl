@@ -160,7 +160,7 @@ static_resources:
     # ── Blackhole – rejects blocked connections ──
     - name: blackhole
       type: STATIC
-      connect_timeout: 0.25s
+      connect_timeout: 0.01s
       load_assignment:
         cluster_name: blackhole
         endpoints:
