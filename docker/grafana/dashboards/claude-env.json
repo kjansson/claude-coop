@@ -14,10 +14,132 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 9
+        "y": 0
+      },
+      "id": 105,
+      "title": "Environment",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 12,
+        "x": 0,
+        "y": 1
+      },
+      "id": 40,
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "auto",
+        "textMode": "name",
+        "colorMode": "background_solid",
+        "graphMode": "none"
+      },
+      "title": "Workspace",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "max by (workspace) (claude_env_info)",
+          "legendFormat": "{{workspace}}"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Normal",
+                  "index": 0
+                },
+                "1": {
+                  "text": "YOLO",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 12,
+        "x": 12,
+        "y": 1
+      },
+      "id": 41,
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background_solid",
+        "graphMode": "none"
+      },
+      "title": "Mode",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "claude_env_yolo_mode",
+          "legendFormat": "YOLO"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 13
       },
       "id": 100,
-      "title": "Claude Code \u2013 Usage",
+      "title": "Claude Code – Usage",
       "type": "row"
     },
     {
@@ -48,7 +170,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 10
+        "y": 14
       },
       "id": 1,
       "options": {
@@ -115,7 +237,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 10
+        "y": 14
       },
       "id": 2,
       "options": {
@@ -162,7 +284,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 10
+        "y": 14
       },
       "id": 3,
       "options": {
@@ -211,7 +333,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 18
+        "y": 22
       },
       "id": 4,
       "options": {
@@ -258,7 +380,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 18
+        "y": 22
       },
       "id": 5,
       "options": {
@@ -306,7 +428,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 18
+        "y": 22
       },
       "id": 6,
       "options": {
@@ -354,7 +476,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 18
+        "y": 22
       },
       "id": 7,
       "options": {
@@ -401,7 +523,7 @@
         "h": 4,
         "w": 12,
         "x": 12,
-        "y": 22
+        "y": 26
       },
       "id": 8,
       "options": {
@@ -454,7 +576,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 26
+        "y": 30
       },
       "id": 9,
       "options": {
@@ -500,7 +622,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 26
+        "y": 30
       },
       "id": 10,
       "options": {
@@ -527,7 +649,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 4
       },
       "id": 103,
       "title": "Context Window (status line)",
@@ -573,7 +695,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 1
+        "y": 5
       },
       "id": 20,
       "options": {
@@ -622,7 +744,7 @@
         "h": 8,
         "w": 10,
         "x": 6,
-        "y": 1
+        "y": 5
       },
       "id": 21,
       "options": {
@@ -671,7 +793,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 1
+        "y": 5
       },
       "id": 22,
       "options": {
@@ -710,10 +832,10 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 34
+        "y": 38
       },
       "id": 104,
-      "title": "Claude Code \u2013 Activity (hooks)",
+      "title": "Claude Code – Activity (hooks)",
       "type": "row"
     },
     {
@@ -744,7 +866,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 35
+        "y": 39
       },
       "id": 30,
       "options": {
@@ -790,7 +912,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 35
+        "y": 39
       },
       "id": 31,
       "options": {
@@ -837,7 +959,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 43
+        "y": 47
       },
       "id": 32,
       "options": {
@@ -889,7 +1011,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 43
+        "y": 47
       },
       "id": 33,
       "options": {
@@ -937,7 +1059,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 43
+        "y": 47
       },
       "id": 34,
       "options": {
@@ -993,7 +1115,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 43
+        "y": 47
       },
       "id": 35,
       "options": {
@@ -1053,7 +1175,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 47
+        "y": 51
       },
       "id": 36,
       "options": {
@@ -1097,7 +1219,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 47
+        "y": 51
       },
       "id": 37,
       "options": {
@@ -1138,7 +1260,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 47
+        "y": 51
       },
       "id": 38,
       "options": {
@@ -1166,10 +1288,10 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 55
+        "y": 59
       },
       "id": 101,
-      "title": "Envoy Proxy \u2013 Traffic Overview",
+      "title": "Envoy Proxy – Traffic Overview",
       "type": "row"
     },
     {
@@ -1201,7 +1323,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 56
+        "y": 60
       },
       "id": 11,
       "options": {
@@ -1254,7 +1376,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 56
+        "y": 60
       },
       "id": 12,
       "options": {
@@ -1307,7 +1429,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 64
+        "y": 68
       },
       "id": 13,
       "options": {
@@ -1319,7 +1441,7 @@
           "mode": "multi"
         }
       },
-      "title": "Envoy \u2013 Bytes In/Out (HTTPS passthrough)",
+      "title": "Envoy – Bytes In/Out (HTTPS passthrough)",
       "type": "timeseries",
       "targets": [
         {
@@ -1366,7 +1488,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 64
+        "y": 68
       },
       "id": 14,
       "options": {

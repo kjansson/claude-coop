@@ -1,0 +1,5 @@
+CLAUDE.local.md
+
+# Generated Envoy config (use envoy.yaml.tpl + config/domains.txt instead)
+docker/envoy/envoy.yaml
+.cache/

@@ -1,0 +1,17 @@
+# Domain whitelist for Envoy proxy
+# One domain per line. Use *. prefix for wildcard subdomains.
+# Lines starting with # are comments. Blank lines are ignored.
+
+anthropic.com
+*.anthropic.com
+claude.com
+*.claude.com
+sentry.io
+*.sentry.io
+registry.npmjs.org
+github.com
+api.github.com
+envoyproxy.io
+*.envoyproxy.io
+*.golang.org
+*.prometheus.io

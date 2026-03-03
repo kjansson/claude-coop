@@ -4,23 +4,17 @@
 # with Envoy proxy whitelisting, Prometheus metrics, and Grafana dashboards.
 #
 # Usage:
-#   ./claude-env.sh [--build] [--whitelist domain1,domain2,...] [--grafana-port PORT]
+#   ./claude-env.sh [--build] [--yolo] [--whitelist domain1,domain2,...]
+#                   [--grafana-port PORT] [--cleanup]
 #
 set -euo pipefail
 
 # ─── Configuration ─────────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DOCKER_DIR="${PROJECT_ROOT}/docker"
 
-NETWORK_NAME="claude-env-net"
 PREFIX="claude-env"
-
-ENVOY_CONTAINER="${PREFIX}-envoy"
-PROMETHEUS_CONTAINER="${PREFIX}-prometheus"
-GRAFANA_CONTAINER="${PREFIX}-grafana"
-CLAUDE_CONTAINER="${PREFIX}-claude"
-PROMETHEUS_VOLUME="${PREFIX}-prometheus-data"
 
 GRAFANA_PORT="${GRAFANA_PORT:-3000}"
 PROMETHEUS_PORT="${PROMETHEUS_PORT:-9090}"
@@ -46,6 +40,8 @@ if [[ "${MOUNT_DIR}" == --* ]]; then
 fi
 
 BUILD=false
+CLEANUP=false
+YOLO=false
 EXTRA_WHITELIST=""
 
 # ─── Parse args ────────────────────────────────────────────────
@@ -53,6 +49,14 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --build)
             BUILD=true
+            shift
+            ;;
+        --cleanup)
+            CLEANUP=true
+            shift
+            ;;
+        --yolo)
+            YOLO=true
             shift
             ;;
         --whitelist)
@@ -74,6 +78,23 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# ─── Project ID ───────────────────────────────────────────────
+WORKSPACE_DIR="$(cd "${MOUNT_DIR}" && pwd -P)"
+PROJECT_BASENAME="$(basename "${WORKSPACE_DIR}")"
+PROJECT_HASH="$(echo -n "${WORKSPACE_DIR}" | sha256sum | cut -c1-8)"
+PROJECT_ID="$(echo "${PROJECT_BASENAME}-${PROJECT_HASH}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')"
+
+# ─── Namespaced resource names ────────────────────────────────
+NETWORK_NAME="${PREFIX}-${PROJECT_ID}-net"
+ENVOY_CONTAINER="${PREFIX}-${PROJECT_ID}-envoy"
+PROMETHEUS_CONTAINER="${PREFIX}-${PROJECT_ID}-prometheus"
+GRAFANA_CONTAINER="${PREFIX}-${PROJECT_ID}-grafana"
+CLAUDE_CONTAINER="${PREFIX}-${PROJECT_ID}-claude"
+PROMETHEUS_VOLUME="${PREFIX}-${PROJECT_ID}-prometheus-data"
+CLAUDE_CONFIG_VOLUME="${PREFIX}-${PROJECT_ID}-claude-config"
+
+export ENVOY_CONTAINER NETWORK_NAME
+
 # ─── Terminal colours ──────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -87,6 +108,42 @@ log()   { echo -e "${BLUE}[claude-env]${NC} $*"; }
 ok()    { echo -e "${GREEN}[claude-env]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[claude-env]${NC} $*"; }
 err()   { echo -e "${RED}[claude-env]${NC} $*" >&2; }
+
+# ─── Cleanup persistent volumes ─────────────────────────────────
+if [[ "${CLEANUP}" == true ]]; then
+    log "Cleaning up persistent volumes for project '${PROJECT_BASENAME}' (${PROJECT_ID})..."
+
+    # Stop any running containers for this project first
+    for ctn in "${CLAUDE_CONTAINER}" "${GRAFANA_CONTAINER}" "${PROMETHEUS_CONTAINER}" "${ENVOY_CONTAINER}"; do
+        if ${DOCKER} inspect "${ctn}" &>/dev/null; then
+            log "  Stopping ${ctn}..."
+            ${DOCKER} rm -f "${ctn}" &>/dev/null || true
+        fi
+    done
+
+    if ${DOCKER} network inspect "${NETWORK_NAME}" &>/dev/null; then
+        log "  Removing network ${NETWORK_NAME}..."
+        ${DOCKER} network rm "${NETWORK_NAME}" &>/dev/null || true
+    fi
+
+    removed=0
+    for vol in "${PROMETHEUS_VOLUME}" "${CLAUDE_CONFIG_VOLUME}"; do
+        if ${DOCKER} volume inspect "${vol}" &>/dev/null; then
+            log "  Removing volume ${vol}..."
+            ${DOCKER} volume rm "${vol}"
+            removed=$((removed + 1))
+        else
+            warn "  Volume ${vol} does not exist, skipping."
+        fi
+    done
+
+    if [[ ${removed} -gt 0 ]]; then
+        ok "Removed ${removed} persistent volume(s) for project '${PROJECT_BASENAME}'."
+    else
+        warn "No persistent volumes found for project '${PROJECT_BASENAME}'."
+    fi
+    exit 0
+fi
 
 # ─── Cleanup on exit ──────────────────────────────────────────
 cleanup() {
@@ -110,9 +167,10 @@ cleanup() {
         rm -rf "${ENVOY_CONFIG_DIR}"
     fi
 
-    ok "Cleanup complete. Persistent volumes retained."
+    ok "Cleanup complete. Persistent volumes retained for project '${PROJECT_BASENAME}'."
     echo -e "  Prometheus data: ${CYAN}${DOCKER} volume rm ${PROMETHEUS_VOLUME}${NC}"
-    echo -e "  Claude auth:    ${CYAN}${DOCKER} volume rm ${PREFIX}-claude-config${NC}"
+    echo -e "  Claude auth:    ${CYAN}${DOCKER} volume rm ${CLAUDE_CONFIG_VOLUME}${NC}"
+    echo -e "  List all:        ${CYAN}docker volume ls --filter name=claude-env${NC}"
 }
 
 trap cleanup EXIT INT TERM
@@ -159,8 +217,6 @@ ${DOCKER} network create \
     "${NETWORK_NAME}"
 
 # ─── Create persistent volumes ───────────────────────────────
-CLAUDE_CONFIG_VOLUME="${PREFIX}-claude-config"
-
 if ! ${DOCKER} volume inspect "${PROMETHEUS_VOLUME}" &>/dev/null; then
     log "Creating Prometheus data volume: ${PROMETHEUS_VOLUME}"
     ${DOCKER} volume create "${PROMETHEUS_VOLUME}"
@@ -261,10 +317,14 @@ echo ""
 echo -e "${BOLD}${CYAN}════════════════════════════════════════════════════════════${NC}"
 echo -e "${BOLD}${CYAN}  Claude Code Docker Environment${NC}"
 echo -e "${BOLD}${CYAN}════════════════════════════════════════════════════════════${NC}"
+echo -e "  ${GREEN}Project:${NC}     ${PROJECT_BASENAME} (${PROJECT_ID})"
 echo -e "  ${GREEN}Workspace:${NC}   ${MOUNT_DIR}"
 echo -e "  ${GREEN}Grafana:${NC}     http://localhost:${GRAFANA_PORT}"
 echo -e "  ${GREEN}Prometheus:${NC}  http://localhost:${PROMETHEUS_PORT}"
 echo -e "  ${GREEN}Envoy Admin:${NC} http://localhost:${ENVOY_ADMIN_PORT}"
+if [[ "${YOLO}" == true ]]; then
+echo -e "  ${GREEN}YOLO mode:${NC}   ${RED}ENABLED${NC} (no permission prompts)"
+fi
 echo -e ""
 echo -e "  All outgoing traffic is filtered through the Envoy proxy."
 echo -e "  Only whitelisted domains are allowed."
@@ -292,6 +352,8 @@ ${DOCKER} run -it --rm \
     -e TERM="${TERM:-xterm-256color}" \
     -e CLAUDE_CODE_ENABLE_TELEMETRY=1 \
     -e OTEL_METRICS_EXPORTER=prometheus \
+    -e CLAUDE_YOLO="${YOLO}" \
+    -e WORKSPACE_NAME="${PROJECT_BASENAME}" \
     -p 9464:9464 \
     -p 9465:9465 \
     "${PREFIX}-claude-img"

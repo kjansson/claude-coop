@@ -111,9 +111,30 @@ echo "Starting Claude Code (OTel metrics → Prometheus OTLP receiver)..."
 echo "============================================"
 echo ""
 
+# ── Write static environment info metrics ─────────────────
+YOLO_INT=0
+if [ "${CLAUDE_YOLO:-false}" = "true" ]; then YOLO_INT=1; fi
+cat > /tmp/claude-env-info.prom <<PROM
+# HELP claude_env_info Environment info for this Claude Code session.
+# TYPE claude_env_info gauge
+claude_env_info{workspace="${WORKSPACE_NAME:-unknown}",yolo_mode="${CLAUDE_YOLO:-false}"} 1
+
+# HELP claude_env_yolo_mode Whether YOLO mode (--dangerously-skip-permissions) is enabled (1) or not (0).
+# TYPE claude_env_yolo_mode gauge
+claude_env_yolo_mode ${YOLO_INT}
+PROM
+echo "Environment info metrics written (workspace=${WORKSPACE_NAME:-unknown}, yolo=${CLAUDE_YOLO:-false})"
+
 # ── Start the status-line metrics HTTP server (port 9465) ─
 echo "Starting status-line metrics server on :9465..."
 gosu claude node /usr/local/lib/metrics-server.mjs &
 echo "  Metrics server PID: $!"
 
-exec gosu claude bash -c "cd /workspace && exec claude"
+CLAUDE_ARGS=""
+if [ "${CLAUDE_YOLO:-false}" = "true" ]; then
+    echo "⚡ YOLO mode enabled — Claude Code will run with --dangerously-skip-permissions"
+    echo ""
+    CLAUDE_ARGS="--dangerously-skip-permissions"
+fi
+
+exec gosu claude bash -c "cd /workspace && exec claude ${CLAUDE_ARGS}"
