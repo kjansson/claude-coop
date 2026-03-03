@@ -44,7 +44,7 @@ These are aggregated by a lightweight Node.js server on port 9465 and scraped by
 ### Launch
 
 ```bash
-./scripts/claude-coop.sh # Or create a symlink for it
+./scripts/claude-coop.sh # Or create a alias for it
 ```
 
 On first run, Claude Code will prompt you to authenticate interactively. Your auth token is stored in a persistent Docker volume (`/home/claude/.claude/`), so you only need to log in once per workspace.
