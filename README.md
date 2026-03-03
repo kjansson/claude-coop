@@ -1,8 +1,8 @@
-# claude-env
+# claude-coop
 
 A sandboxed Docker environment for running [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with network confinement, traffic control, and full observability.
 
-## Why claude-env?
+## Why claude-coop?
 
 ### Isolation
 
@@ -15,7 +15,7 @@ Envoy inspects every outbound connection — SNI for HTTPS, `Host` header for HT
 ```bash
 ./scripts/whitelist.sh add example.com *.example.com   # add domains
 ./scripts/whitelist.sh apply                            # regenerate config + restart Envoy
-./scripts/claude-env.sh --whitelist extra.com           # or pass temporary domains at launch
+./scripts/claude-coop.sh --whitelist extra.com           # or pass temporary domains at launch
 ```
 
 ### Persistent Session and Memory per Workspace
@@ -28,7 +28,7 @@ A Prometheus + Grafana stack runs alongside the Claude container. Prometheus scr
 
 ### Custom Metrics
 
-Beyond Claude Code's native OpenTelemetry metrics, claude-env instruments two additional metric sources via Claude Code's hooks and statusline systems:
+Beyond Claude Code's native OpenTelemetry metrics, claude-coop instruments two additional metric sources via Claude Code's hooks and statusline systems:
 
 - **Statusline metrics** — context window usage %, current/total tokens by type, session cost, lines added/removed
 - **Hook metrics** — tool invocation counts by name, tool errors, context compaction events, subagent lifecycle, turns by stop reason
@@ -46,7 +46,7 @@ These are aggregated by a lightweight Node.js server on port 9465 and scraped by
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
-./scripts/claude-env.sh
+./scripts/claude-coop.sh
 ```
 
 This will:
@@ -59,11 +59,11 @@ This will:
 ### Options
 
 ```bash
-./scripts/claude-env.sh --build                          # Force rebuild images
-./scripts/claude-env.sh --whitelist example.com,*.example.org  # Extra domains for this session
-./scripts/claude-env.sh /path/to/project                 # Mount a specific directory
-./scripts/claude-env.sh --grafana-port 8080 --prometheus-port 9999  # Custom ports
-./scripts/claude-env.sh --teams                          # Enable Agent Teams (experimental)
+./scripts/claude-coop.sh --build                          # Force rebuild images
+./scripts/claude-coop.sh --whitelist example.com,*.example.org  # Extra domains for this session
+./scripts/claude-coop.sh /path/to/project                 # Mount a specific directory
+./scripts/claude-coop.sh --grafana-port 8080 --prometheus-port 9999  # Custom ports
+./scripts/claude-coop.sh --teams                          # Enable Agent Teams (experimental)
 ```
 
 ### Cleanup
@@ -73,8 +73,8 @@ Containers and the Docker network are removed automatically when you exit the Cl
 Persistent volumes are preserved across sessions. To remove them:
 
 ```bash
-docker volume rm claude-env-<project-id>-prometheus-data
-docker volume rm claude-env-<project-id>-claude-config
+docker volume rm claude-coop-<project-id>-prometheus-data
+docker volume rm claude-coop-<project-id>-claude-config
 ```
 
 ## Architecture
@@ -233,7 +233,7 @@ http://localhost:9901 provides direct access to Envoy's admin interface:
 ## File Structure
 
 ```
-claude-env/
+claude-coop/
 ├── config/
 │   └── domains.txt                 # Domain whitelist (one per line)
 ├── docker/
@@ -248,7 +248,7 @@ claude-env/
 │   │   └── envoy.yaml.tpl          # Envoy config template (populated by whitelist.sh)
 │   ├── grafana/
 │   │   ├── dashboards/
-│   │   │   └── claude-env.json     # Pre-built Grafana dashboard
+│   │   │   └── claude-coop.json     # Pre-built Grafana dashboard
 │   │   └── provisioning/
 │   │       ├── dashboards/
 │   │       │   └── dashboards.yml
@@ -257,7 +257,7 @@ claude-env/
 │   └── prometheus/
 │       └── prometheus.yml          # Scrape targets config
 ├── scripts/
-│   ├── claude-env.sh               # Main launcher script
+│   ├── claude-coop.sh               # Main launcher script
 │   └── whitelist.sh                # Domain whitelist management tool
 └── README.md
 ```

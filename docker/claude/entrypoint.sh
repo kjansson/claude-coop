@@ -83,7 +83,7 @@ YOLO_INT=0
 if [ "${CLAUDE_YOLO:-false}" = "true" ]; then YOLO_INT=1; fi
 TEAMS_INT=0
 if [ "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-false}" = "true" ]; then TEAMS_INT=1; fi
-cat > /tmp/claude-env-info.prom <<PROM
+cat > /tmp/claude-coop-info.prom <<PROM
 # HELP claude_env_info Environment info for this Claude Code session.
 # TYPE claude_env_info gauge
 claude_env_info{workspace="${WORKSPACE_NAME:-unknown}",yolo_mode="${CLAUDE_YOLO:-false}",teams_mode="${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-false}"} 1

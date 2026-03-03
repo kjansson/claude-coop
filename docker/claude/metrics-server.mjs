@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 
 const PORT = parseInt(process.env.METRICS_PORT || '9465', 10);
 const METRICS_FILES = [
-  '/tmp/claude-env-info.prom',
+  '/tmp/claude-coop-info.prom',
   '/tmp/claude-statusline-metrics.prom',
   '/tmp/claude-hooks-metrics.prom',
 ];

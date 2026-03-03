@@ -1536,6 +1536,6 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "Claude Code Environment",
-  "uid": "claude-env-dashboard",
+  "uid": "claude-coop-dashboard",
   "version": 2
 }

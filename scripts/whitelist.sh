@@ -17,7 +17,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DOMAINS_FILE="${DOMAINS_FILE:-${PROJECT_ROOT}/config/domains.txt}"
 TEMPLATE_FILE="${PROJECT_ROOT}/docker/envoy/envoy.yaml.tpl"
 
-PREFIX="claude-env"
+PREFIX="claude-coop"
 LOG_PREFIX="whitelist"
 ENVOY_CONTAINER="${ENVOY_CONTAINER:-${PREFIX}-envoy}"
 ENVOY_CONFIG_DIR="${ENVOY_CONFIG_DIR:-${PROJECT_ROOT}/.cache/envoy-config}"
@@ -235,7 +235,7 @@ cmd_apply() {
 
     if ! ${DOCKER} inspect "${ENVOY_CONTAINER}" &>/dev/null; then
         warn "Envoy container '${ENVOY_CONTAINER}' is not running. Config generated but not applied."
-        log "Start the environment with: scripts/claude-env.sh"
+        log "Start the environment with: scripts/claude-coop.sh"
         return 0
     fi
 

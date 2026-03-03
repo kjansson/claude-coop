@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# claude-env — Launch Claude Code in a confined Docker environment
+# claude-coop — Launch Claude Code in a confined Docker environment
 # with Envoy proxy whitelisting, Prometheus metrics, and Grafana dashboards.
 #
 # Usage:
-#   ./claude-env.sh [--build] [--yolo] [--teams] [--whitelist domain1,domain2,...]
+#   ./claude-coop.sh [--build] [--yolo] [--teams] [--whitelist domain1,domain2,...]
 #                   [--grafana-port PORT] [--cleanup]
 #
 set -euo pipefail
@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DOCKER_DIR="${PROJECT_ROOT}/docker"
 
-PREFIX="claude-env"
+PREFIX="claude-coop"
 LOG_PREFIX="${PREFIX}"
 
 # Source shared library (colours, logging, container runtime detection)
@@ -158,7 +158,7 @@ cleanup() {
     ok "Cleanup complete. Persistent volumes retained for project '${PROJECT_BASENAME}'."
     echo -e "  Prometheus data: ${CYAN}${DOCKER} volume rm ${PROMETHEUS_VOLUME}${NC}"
     echo -e "  Claude auth:    ${CYAN}${DOCKER} volume rm ${CLAUDE_CONFIG_VOLUME}${NC}"
-    echo -e "  List all:        ${CYAN}docker volume ls --filter name=claude-env${NC}"
+    echo -e "  List all:        ${CYAN}docker volume ls --filter name=claude-coop${NC}"
 }
 
 trap cleanup EXIT INT TERM
@@ -294,7 +294,7 @@ ${DOCKER} run -d \
     -e GF_SECURITY_ADMIN_PASSWORD=admin \
     -e GF_AUTH_ANONYMOUS_ENABLED=true \
     -e GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer \
-    -e GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/claude-env.json \
+    -e GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/claude-coop.json \
     grafana/grafana:latest
 
 ok "Grafana running (UI: http://localhost:${GRAFANA_PORT}, user: admin/admin)"
