@@ -260,4 +260,5 @@ docker run -it --rm \
     -e CLAUDE_CODE_ENABLE_TELEMETRY=1 \
     -e OTEL_METRICS_EXPORTER=prometheus \
     -p 9464:9464 \
+    -p 9465:9465 \
     "${PREFIX}-claude-img"

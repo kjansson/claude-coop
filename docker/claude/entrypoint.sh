@@ -30,6 +30,36 @@ echo "Resolved Envoy IP: ${RESOLVED_ENVOY_IP}"
 # (first run on a fresh volume needs this)
 chown claude:claude /home/claude
 
+# ── Configure Claude Code status line for metrics ────────
+CLAUDE_SETTINGS="/home/claude/.claude/settings.json"
+mkdir -p /home/claude/.claude
+
+# Build the settings patch with statusLine and hooks
+SETTINGS_PATCH=$(cat <<'JSONPATCH'
+{
+  "statusLine": { "type": "command", "command": "/usr/local/lib/statusline.sh" },
+  "hooks": {
+    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "/usr/local/lib/hooks-metrics.sh PostToolUse" }] }],
+    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "/usr/local/lib/hooks-metrics.sh PostToolUseFailure" }] }],
+    "PreCompact": [{ "hooks": [{ "type": "command", "command": "/usr/local/lib/hooks-metrics.sh PreCompact" }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "/usr/local/lib/hooks-metrics.sh SubagentStart" }] }],
+    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "/usr/local/lib/hooks-metrics.sh SubagentStop" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "/usr/local/lib/hooks-metrics.sh Stop" }] }]
+  }
+}
+JSONPATCH
+)
+
+if [ -f "${CLAUDE_SETTINGS}" ]; then
+    UPDATED=$(jq --argjson patch "$SETTINGS_PATCH" '. + $patch' "${CLAUDE_SETTINGS}")
+    echo "${UPDATED}" > "${CLAUDE_SETTINGS}"
+else
+    echo "${SETTINGS_PATCH}" > "${CLAUDE_SETTINGS}"
+fi
+chown -R claude:claude /home/claude/.claude
+echo "Configured status line -> /usr/local/lib/statusline.sh"
+echo "Configured hooks -> /usr/local/lib/hooks-metrics.sh"
+
 # ── NAT rules: transparently redirect HTTP/HTTPS to Envoy ─────
 iptables -t nat -A OUTPUT -p tcp --dport 80 -j DNAT --to-destination "${RESOLVED_ENVOY_IP}:${ENVOY_HTTP_PORT}"
 iptables -t nat -A OUTPUT -p tcp --dport 443 -j DNAT --to-destination "${RESOLVED_ENVOY_IP}:${ENVOY_HTTPS_PORT}"
@@ -80,5 +110,10 @@ echo ""
 echo "Starting Claude Code (OTel metrics → Prometheus OTLP receiver)..."
 echo "============================================"
 echo ""
+
+# ── Start the status-line metrics HTTP server (port 9465) ─
+echo "Starting status-line metrics server on :9465..."
+gosu claude node /usr/local/lib/metrics-server.mjs &
+echo "  Metrics server PID: $!"
 
 exec gosu claude bash -c "cd /workspace && exec claude"

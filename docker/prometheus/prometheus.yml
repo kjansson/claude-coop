@@ -17,6 +17,14 @@ scrape_configs:
     static_configs:
       - targets: ["claude:9464"]
 
+  # ── Claude Code status-line metrics (context window) ──
+  - job_name: "claude-statusline"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["claude:9465"]
+        labels:
+          instance: "claude-statusline"
+
   # ── Prometheus self-monitoring ─────────────────
   - job_name: "prometheus"
     static_configs:
