@@ -305,7 +305,7 @@ log "Waiting for services to initialize..."
 sleep 3
 
 # ─── Open Grafana in browser ──────────────────────────────────
-GRAFANA_URL="http://localhost:${GRAFANA_PORT}"
+GRAFANA_URL="http://localhost:${GRAFANA_PORT}?kiosk"
 if command -v open &>/dev/null; then
     open "${GRAFANA_URL}" 2>/dev/null && ok "Opened Grafana in browser" || true
 elif command -v xdg-open &>/dev/null; then
