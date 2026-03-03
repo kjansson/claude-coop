@@ -26,6 +26,19 @@ GRAFANA_PORT="${GRAFANA_PORT:-3000}"
 PROMETHEUS_PORT="${PROMETHEUS_PORT:-9090}"
 ENVOY_ADMIN_PORT="${ENVOY_ADMIN_PORT:-9901}"
 
+DOMAINS_FILE="${PROJECT_ROOT}/config/domains.txt"
+
+# ─── Detect container runtime (podman or docker) ──────────────
+if command -v podman &>/dev/null; then
+    DOCKER=podman
+elif command -v docker &>/dev/null; then
+    DOCKER=docker
+else
+    err "Neither docker nor podman found in PATH."
+    exit 1
+fi
+export DOCKER
+
 MOUNT_DIR="${1:-$(pwd)}"
 # If first arg is a flag, use current dir
 if [[ "${MOUNT_DIR}" == --* ]]; then
@@ -81,94 +94,114 @@ cleanup() {
     log "Shutting down Claude Code environment..."
 
     for ctn in "${CLAUDE_CONTAINER}" "${GRAFANA_CONTAINER}" "${PROMETHEUS_CONTAINER}" "${ENVOY_CONTAINER}"; do
-        if docker inspect "${ctn}" &>/dev/null; then
+        if ${DOCKER} inspect "${ctn}" &>/dev/null; then
             log "  Stopping ${ctn}..."
-            docker rm -f "${ctn}" &>/dev/null || true
+            ${DOCKER} rm -f "${ctn}" &>/dev/null || true
         fi
     done
 
-    if docker network inspect "${NETWORK_NAME}" &>/dev/null; then
+    if ${DOCKER} network inspect "${NETWORK_NAME}" &>/dev/null; then
         log "  Removing network ${NETWORK_NAME}..."
-        docker network rm "${NETWORK_NAME}" &>/dev/null || true
+        ${DOCKER} network rm "${NETWORK_NAME}" &>/dev/null || true
+    fi
+
+    if [[ -n "${ENVOY_CONFIG_DIR:-}" && -d "${ENVOY_CONFIG_DIR}" ]]; then
+        log "  Removing temp config dir: ${ENVOY_CONFIG_DIR}"
+        rm -rf "${ENVOY_CONFIG_DIR}"
     fi
 
     ok "Cleanup complete. Persistent volumes retained."
-    echo -e "  Prometheus data: ${CYAN}docker volume rm ${PROMETHEUS_VOLUME}${NC}"
-    echo -e "  Claude auth:    ${CYAN}docker volume rm ${PREFIX}-claude-config${NC}"
+    echo -e "  Prometheus data: ${CYAN}${DOCKER} volume rm ${PROMETHEUS_VOLUME}${NC}"
+    echo -e "  Claude auth:    ${CYAN}${DOCKER} volume rm ${PREFIX}-claude-config${NC}"
 }
 
 trap cleanup EXIT INT TERM
 
 # ─── Pre-flight checks ────────────────────────────────────────
-if ! command -v docker &>/dev/null; then
-    err "Docker is not installed or not in PATH."
-    exit 1
-fi
-
-if ! docker info &>/dev/null; then
-    err "Docker daemon is not running."
+if ! ${DOCKER} info &>/dev/null; then
+    err "${DOCKER} daemon is not running."
     exit 1
 fi
 
 # ─── Build images ──────────────────────────────────────────────
 build_images() {
     log "Building Envoy proxy image..."
-    docker build -t "${PREFIX}-envoy-img" "${DOCKER_DIR}/envoy"
+    ${DOCKER} build -t "${PREFIX}-envoy-img" "${DOCKER_DIR}/envoy"
 
     log "Building Claude Code image..."
-    docker build -t "${PREFIX}-claude-img" "${DOCKER_DIR}/claude"
+    ${DOCKER} build -t "${PREFIX}-claude-img" "${DOCKER_DIR}/claude"
 }
 
 if [[ "${BUILD}" == true ]]; then
     build_images
 else
     # Build if images don't exist
-    if ! docker image inspect "${PREFIX}-envoy-img" &>/dev/null || \
-       ! docker image inspect "${PREFIX}-claude-img" &>/dev/null; then
+    if ! ${DOCKER} image inspect "${PREFIX}-envoy-img" &>/dev/null || \
+       ! ${DOCKER} image inspect "${PREFIX}-claude-img" &>/dev/null; then
         warn "Images not found. Building..."
         build_images
     fi
 fi
 
 # ─── Create network ───────────────────────────────────────────
-if docker network inspect "${NETWORK_NAME}" &>/dev/null; then
+if ${DOCKER} network inspect "${NETWORK_NAME}" &>/dev/null; then
     warn "Network ${NETWORK_NAME} already exists, removing..."
     # Remove any orphaned containers first
     for ctn in "${CLAUDE_CONTAINER}" "${GRAFANA_CONTAINER}" "${PROMETHEUS_CONTAINER}" "${ENVOY_CONTAINER}"; do
-        docker rm -f "${ctn}" &>/dev/null || true
+        ${DOCKER} rm -f "${ctn}" &>/dev/null || true
     done
-    docker network rm "${NETWORK_NAME}" &>/dev/null || true
+    ${DOCKER} network rm "${NETWORK_NAME}" &>/dev/null || true
 fi
 
-log "Creating Docker network: ${NETWORK_NAME}"
-docker network create \
+log "Creating container network: ${NETWORK_NAME}"
+${DOCKER} network create \
     --driver bridge \
     "${NETWORK_NAME}"
 
 # ─── Create persistent volumes ───────────────────────────────
 CLAUDE_CONFIG_VOLUME="${PREFIX}-claude-config"
 
-if ! docker volume inspect "${PROMETHEUS_VOLUME}" &>/dev/null; then
+if ! ${DOCKER} volume inspect "${PROMETHEUS_VOLUME}" &>/dev/null; then
     log "Creating Prometheus data volume: ${PROMETHEUS_VOLUME}"
-    docker volume create "${PROMETHEUS_VOLUME}"
+    ${DOCKER} volume create "${PROMETHEUS_VOLUME}"
 else
     log "Using existing Prometheus data volume: ${PROMETHEUS_VOLUME}"
 fi
 
-if ! docker volume inspect "${CLAUDE_CONFIG_VOLUME}" &>/dev/null; then
+if ! ${DOCKER} volume inspect "${CLAUDE_CONFIG_VOLUME}" &>/dev/null; then
     log "Creating Claude config volume: ${CLAUDE_CONFIG_VOLUME}"
-    docker volume create "${CLAUDE_CONFIG_VOLUME}"
+    ${DOCKER} volume create "${CLAUDE_CONFIG_VOLUME}"
 else
     log "Using existing Claude config volume: ${CLAUDE_CONFIG_VOLUME} (auth persisted)"
 fi
 
+# ─── Generate Envoy config ────────────────────────────────────
+ENVOY_CONFIG_DIR="${PROJECT_ROOT}/.cache/envoy-config"
+mkdir -p "${ENVOY_CONFIG_DIR}"
+
+# If --whitelist was passed, temporarily append extra domains
+if [[ -n "${EXTRA_WHITELIST}" ]]; then
+    log "Adding extra whitelist domains: ${EXTRA_WHITELIST}"
+    IFS=',' read -ra EXTRA_DOMAINS <<< "${EXTRA_WHITELIST}"
+    for domain in "${EXTRA_DOMAINS[@]}"; do
+        domain=$(echo "${domain}" | xargs)  # trim whitespace
+        if ! grep -qxF "${domain}" "${DOMAINS_FILE}"; then
+            echo "${domain}" >> "${DOMAINS_FILE}"
+        fi
+    done
+fi
+
+log "Generating Envoy config from template..."
+"${SCRIPT_DIR}/whitelist.sh" generate --config-dir "${ENVOY_CONFIG_DIR}"
+
 # ─── Start Envoy ──────────────────────────────────────────────
 log "Starting Envoy proxy..."
-docker run -d \
+${DOCKER} run -d \
     --name "${ENVOY_CONTAINER}" \
     --network "${NETWORK_NAME}" \
     --network-alias envoy \
     --restart unless-stopped \
+    -v "${ENVOY_CONFIG_DIR}/envoy.yaml:/etc/envoy/envoy.yaml:ro" \
     -p "${ENVOY_ADMIN_PORT}:9901" \
     "${PREFIX}-envoy-img"
 
@@ -176,7 +209,7 @@ ok "Envoy proxy running (admin: http://localhost:${ENVOY_ADMIN_PORT})"
 
 # ─── Start Prometheus ──────────────────────────────────────────
 log "Starting Prometheus..."
-docker run -d \
+${DOCKER} run -d \
     --name "${PROMETHEUS_CONTAINER}" \
     --network "${NETWORK_NAME}" \
     --network-alias prometheus \
@@ -194,7 +227,7 @@ ok "Prometheus running (UI: http://localhost:${PROMETHEUS_PORT})"
 
 # ─── Start Grafana ─────────────────────────────────────────────
 log "Starting Grafana..."
-docker run -d \
+${DOCKER} run -d \
     --name "${GRAFANA_CONTAINER}" \
     --network "${NETWORK_NAME}" \
     --network-alias grafana \
@@ -245,7 +278,7 @@ echo ""
 # The Claude container is on the internal-only network.
 # It has NET_ADMIN for iptables rules that redirect traffic to Envoy.
 # It cannot directly reach the internet — only the Envoy proxy can.
-docker run -it --rm \
+${DOCKER} run -it --rm \
     --name "${CLAUDE_CONTAINER}" \
     --network "${NETWORK_NAME}" \
     --network-alias claude \

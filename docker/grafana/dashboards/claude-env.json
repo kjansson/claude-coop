@@ -1217,11 +1217,11 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "rate(envoy_tcp_https_passthrough_cx_total[1m])",
+          "expr": "rate(envoy_tcp_downstream_cx_total{envoy_tcp_prefix=\"https_passthrough\"}[1m])",
           "legendFormat": "Allowed cx/s"
         },
         {
-          "expr": "rate(envoy_tcp_https_blocked_cx_total[1m])",
+          "expr": "rate(envoy_tcp_downstream_cx_total{envoy_tcp_prefix=\"https_blocked\"}[1m])",
           "legendFormat": "Blocked cx/s"
         }
       ]
@@ -1270,11 +1270,11 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "rate(envoy_http_http_outbound_downstream_rq_total[1m])",
+          "expr": "rate(envoy_http_downstream_rq_total{envoy_http_conn_manager_prefix=\"http_outbound\"}[1m])",
           "legendFormat": "Downstream req/s"
         },
         {
-          "expr": "rate(envoy_http_http_outbound_downstream_rq_xx{envoy_response_code_class=\"4\"}[1m])",
+          "expr": "rate(envoy_http_downstream_rq_xx{envoy_http_conn_manager_prefix=\"http_outbound\",envoy_response_code_class=\"4\"}[1m])",
           "legendFormat": "4xx/s (blocked)"
         }
       ]
@@ -1323,11 +1323,11 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "rate(envoy_tcp_https_passthrough_cx_rx_bytes_total[1m])",
+          "expr": "rate(envoy_tcp_downstream_cx_rx_bytes_total{envoy_tcp_prefix=\"https_passthrough\"}[1m])",
           "legendFormat": "RX bytes/s"
         },
         {
-          "expr": "rate(envoy_tcp_https_passthrough_cx_tx_bytes_total[1m])",
+          "expr": "rate(envoy_tcp_downstream_cx_tx_bytes_total{envoy_tcp_prefix=\"https_passthrough\"}[1m])",
           "legendFormat": "TX bytes/s"
         }
       ]
@@ -1382,15 +1382,15 @@
       "type": "stat",
       "targets": [
         {
-          "expr": "envoy_tcp_https_passthrough_cx_active",
+          "expr": "envoy_listener_downstream_cx_active{envoy_listener_address=\"0.0.0.0_10001\"}",
           "legendFormat": "HTTPS active"
         },
         {
-          "expr": "envoy_http_http_outbound_downstream_cx_active",
+          "expr": "envoy_http_downstream_cx_active{envoy_http_conn_manager_prefix=\"http_outbound\"}",
           "legendFormat": "HTTP active"
         },
         {
-          "expr": "envoy_tcp_https_blocked_cx_total",
+          "expr": "envoy_tcp_downstream_cx_total{envoy_tcp_prefix=\"https_blocked\"}",
           "legendFormat": "HTTPS blocked (total)"
         }
       ]

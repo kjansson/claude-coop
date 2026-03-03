@@ -12,6 +12,7 @@ A confined Docker environment for running [Claude Code](https://docs.anthropic.c
 │  │  Container    │  :80  → :10000   │   (whitelist)     │ ──┐    │
 │  │              │  :443 → :10001   │                    │   │    │
 │  │  OTel :9464  │                   │  admin:9901       │   │    │
+│  │  Metrics:9465│                   │                    │   │    │
 │  └──────┬───────┘                   └────────┬─────────┘   │    │
 │         │                                     │             │    │
 │  ┌──────┴────────────────────────────┐       │             │    │
@@ -61,15 +62,19 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 
 This will:
 1. Build the custom Docker images (first run only)
-2. Create an isolated Docker network
-3. Start Envoy, Prometheus, and Grafana
-4. Launch an interactive Claude Code session with your current directory mounted
+2. Generate the Envoy config from the domain whitelist
+3. Create an isolated Docker network
+4. Start Envoy, Prometheus, and Grafana
+5. Launch an interactive Claude Code session with your current directory mounted
 
 ### Options
 
 ```bash
 # Force rebuild of images
 ./scripts/claude-env.sh --build
+
+# Add extra domains for this session (comma-separated)
+./scripts/claude-env.sh --whitelist example.com,*.example.org
 
 # Mount a specific directory
 ./scripts/claude-env.sh /path/to/project
@@ -82,53 +87,107 @@ This will:
 
 Everything is cleaned up automatically when you exit the Claude Code session (Ctrl+C or `/exit`). The trap handler removes all containers and the Docker network.
 
-Prometheus data is persisted in the `claude-env-prometheus-data` Docker volume. To remove it:
+Persistent volumes are preserved across sessions. To remove them:
 
 ```bash
 docker volume rm claude-env-prometheus-data
+docker volume rm claude-env-claude-config
 ```
 
 ## Domain Whitelist
 
-The Envoy proxy allows traffic only to these domains:
+Allowed domains are defined in `config/domains.txt` — one domain per line, with `*.` prefix for wildcard subdomains.
+
+**Default whitelist:**
 
 | Domain | Purpose |
 |--------|---------|
-| `api.anthropic.com` | Claude API |
-| `statsig.anthropic.com` | Feature flags |
+| `anthropic.com` / `*.anthropic.com` | Claude API, feature flags |
+| `claude.com` / `*.claude.com` | Claude documentation |
 | `sentry.io` / `*.sentry.io` | Error reporting |
 | `registry.npmjs.org` | npm packages |
 | `github.com` / `api.github.com` | GitHub access |
+| `envoyproxy.io` / `*.envoyproxy.io` | Envoy documentation |
+| `*.golang.org` | Go documentation |
+| `*.prometheus.io` | Prometheus documentation |
 
-### Modifying the Whitelist
+### Managing the Whitelist
 
-Edit `docker/envoy/envoy.yaml`:
-
-- **HTTPS (SNI-based):** Update the `server_names` list in the `https_listener` → `filter_chain_match` section
-- **HTTP (Lua-based):** Update the `allowed` table and `wildcard_suffixes` list in the Lua filter
-
-After changes, rebuild with `--build`:
+Use the `whitelist.sh` helper:
 
 ```bash
-./scripts/claude-env.sh --build
+# List current domains
+./scripts/whitelist.sh list
+
+# Add domains
+./scripts/whitelist.sh add example.com *.example.com
+
+# Remove a domain
+./scripts/whitelist.sh remove example.com
+
+# Regenerate Envoy config from domains.txt
+./scripts/whitelist.sh generate
+
+# Regenerate config and restart Envoy (live update)
+./scripts/whitelist.sh apply
+```
+
+Or edit `config/domains.txt` directly and run `./scripts/whitelist.sh apply`.
+
+You can also pass temporary extra domains at launch time:
+
+```bash
+./scripts/claude-env.sh --whitelist extra.com,*.extra.org
 ```
 
 ## Monitoring
 
-Claude Code's [native OpenTelemetry support](https://code.claude.com/docs/en/monitoring-usage) is used for metrics. The launcher script enables the built-in Prometheus exporter (`OTEL_METRICS_EXPORTER=prometheus`), which serves metrics on port 9464 inside the container. Prometheus scrapes this directly — no custom exporter needed.
+Metrics are collected from three sources and scraped by Prometheus:
 
-### Native Metrics Available
+| Endpoint | Port | Source |
+|----------|------|--------|
+| Claude OTel | 9464 | Native OpenTelemetry (built into Claude Code) |
+| Custom metrics | 9465 | Statusline + hooks scripts |
+| Envoy admin | 9901 | Envoy's built-in stats |
 
-| Metric | Description | Unit |
-|--------|-------------|------|
-| `claude_code.token.usage` | Tokens consumed (by type: input/output/cache) | tokens |
-| `claude_code.cost.usage` | Session cost (by model) | USD |
-| `claude_code.session.count` | Sessions started | count |
-| `claude_code.lines_of_code.count` | Lines added/removed | count |
-| `claude_code.commit.count` | Git commits created | count |
-| `claude_code.pull_request.count` | PRs created | count |
-| `claude_code.active_time.total` | Active time (user interaction / CLI processing) | seconds |
-| `claude_code.code_edit_tool.decision` | Edit/Write/NotebookEdit accept/reject counts | count |
+### Native OTel Metrics (port 9464)
+
+Claude Code's [native OpenTelemetry support](https://code.claude.com/docs/en/monitoring-usage) exposes these via `OTEL_METRICS_EXPORTER=prometheus`:
+
+| Metric | Description |
+|--------|-------------|
+| `claude_code.token.usage` | Tokens consumed (input/output/cache) |
+| `claude_code.cost.usage` | Session cost by model (USD) |
+| `claude_code.session.count` | Sessions started |
+| `claude_code.lines_of_code.count` | Lines added/removed |
+| `claude_code.commit.count` | Git commits created |
+| `claude_code.pull_request.count` | PRs created |
+| `claude_code.active_time.total` | Active time (seconds) |
+| `claude_code.code_edit_tool.decision` | Edit accept/reject counts |
+
+### Custom Metrics (port 9465)
+
+A lightweight metrics server (`metrics-server.mjs`) aggregates output from two scripts:
+
+**Statusline metrics** (`statusline.sh`) — invoked by Claude Code's status line handler:
+
+| Metric | Description |
+|--------|-------------|
+| `claude_statusline_context_window_used_percent` | Context window usage % |
+| `claude_statusline_current_input_tokens` | Current input tokens |
+| `claude_statusline_total_cost_usd` | Total session cost |
+| `claude_statusline_exceeds_200k_tokens` | Binary flag for high usage |
+
+**Hook metrics** (`hooks-metrics.sh`) — invoked by Claude Code hooks:
+
+| Metric | Description |
+|--------|-------------|
+| `claude_hook_tool_use_total{tool_name=...}` | Tool usage by name |
+| `claude_hook_tool_errors_total{tool_name=...}` | Tool errors by name |
+| `claude_hook_compaction_total` | Context compaction events |
+| `claude_hook_subagent_starts_total` | Subagent launches |
+| `claude_hook_subagent_stops_total` | Subagent completions |
+| `claude_hook_turns_total{stop_reason=...}` | Turns by stop reason |
 
 ### Grafana Dashboard
 
@@ -152,14 +211,14 @@ claude_code_cost_usage_usd_total
 # Token consumption rate by type
 rate(claude_code_token_usage_tokens_total[5m])
 
-# Lines of code added
-rate(claude_code_lines_of_code_count_total{type="added"}[5m])
+# Context window usage
+claude_statusline_context_window_used_percent
+
+# Tool usage breakdown
+claude_hook_tool_use_total
 
 # HTTPS connections blocked in last 5 minutes
 increase(envoy_tcp_https_blocked_cx_total[5m])
-
-# Envoy upstream connection rate
-rate(envoy_cluster_upstream_cx_total{envoy_cluster_name=~"dynamic_forward_proxy.*"}[1m])
 ```
 
 ### Envoy Admin
@@ -185,24 +244,30 @@ http://localhost:9901 provides direct access to Envoy's admin interface:
 
 ```
 claude-env/
+├── config/
+│   └── domains.txt                 # Domain whitelist (one per line)
 ├── docker/
 │   ├── claude/
-│   │   ├── Dockerfile            # Claude Code container image
-│   │   └── entrypoint.sh         # iptables setup + launch
+│   │   ├── Dockerfile              # Claude Code container image
+│   │   ├── entrypoint.sh           # iptables setup + hooks config + launch
+│   │   ├── hooks-metrics.sh        # Hook-based metrics (tool use, errors, compactions)
+│   │   ├── metrics-server.mjs      # HTTP metrics aggregator (port 9465)
+│   │   └── statusline.sh           # Statusline metrics (context window, cost, tokens)
 │   ├── envoy/
-│   │   ├── Dockerfile            # Envoy proxy image
-│   │   └── envoy.yaml            # Envoy config (whitelist + routing)
+│   │   ├── Dockerfile              # Envoy proxy image
+│   │   └── envoy.yaml.tpl          # Envoy config template (populated by whitelist.sh)
 │   ├── grafana/
 │   │   ├── dashboards/
-│   │   │   └── claude-env.json   # Pre-built Grafana dashboard
+│   │   │   └── claude-env.json     # Pre-built Grafana dashboard
 │   │   └── provisioning/
 │   │       ├── dashboards/
 │   │       │   └── dashboards.yml
 │   │       └── datasources/
 │   │           └── prometheus.yml
 │   └── prometheus/
-│       └── prometheus.yml        # Scrape targets config
+│       └── prometheus.yml          # Scrape targets config
 ├── scripts/
-│   └── claude-env.sh             # Main launcher script
+│   ├── claude-env.sh               # Main launcher script
+│   └── whitelist.sh                # Domain whitelist management tool
 └── README.md
 ```
