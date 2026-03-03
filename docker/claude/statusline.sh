@@ -9,30 +9,32 @@ METRICS_TMP="${METRICS_FILE}.tmp"
 # Read the full JSON from stdin
 INPUT=$(cat)
 
-# Debug: dump raw JSON for field discovery
-echo "$INPUT" > /tmp/claude-statusline-debug.json
+# ── Extract all fields with a single jq call ─────────────────
+read -r CTX_USED_PCT CTX_WINDOW_SIZE INPUT_TOKENS OUTPUT_TOKENS \
+       CACHE_CREATE CACHE_READ TOTAL_INPUT TOTAL_OUTPUT \
+       TOTAL_COST TOTAL_DURATION_MS TOTAL_API_DURATION_MS \
+       LINES_ADDED LINES_REMOVED EXCEEDS_200K \
+       MODEL_ID SESSION_ID \
+  <<< "$(echo "$INPUT" | jq -r '[
+    .context_window.used_percentage // 0,
+    .context_window.context_window_size // 0,
+    .context_window.current_usage.input_tokens // 0,
+    .context_window.current_usage.output_tokens // 0,
+    .context_window.current_usage.cache_creation_input_tokens // 0,
+    .context_window.current_usage.cache_read_input_tokens // 0,
+    .context_window.total_input_tokens // 0,
+    .context_window.total_output_tokens // 0,
+    .cost.total_cost_usd // 0,
+    .cost.total_duration_ms // 0,
+    .cost.total_api_duration_ms // 0,
+    .cost.total_lines_added // 0,
+    .cost.total_lines_removed // 0,
+    .exceeds_200k_tokens // false,
+    .model.id // "unknown",
+    .session_id // "unknown"
+  ] | @tsv')"
 
-# ── Extract fields with jq ─────────────────────────────────
-CTX_USED_PCT=$(echo "$INPUT" | jq -r '.context_window.used_percentage // 0')
-CTX_WINDOW_SIZE=$(echo "$INPUT" | jq -r '.context_window.context_window_size // 0')
-INPUT_TOKENS=$(echo "$INPUT" | jq -r '.context_window.current_usage.input_tokens // 0')
-OUTPUT_TOKENS=$(echo "$INPUT" | jq -r '.context_window.current_usage.output_tokens // 0')
-CACHE_CREATE=$(echo "$INPUT" | jq -r '.context_window.current_usage.cache_creation_input_tokens // 0')
-CACHE_READ=$(echo "$INPUT" | jq -r '.context_window.current_usage.cache_read_input_tokens // 0')
-TOTAL_INPUT=$(echo "$INPUT" | jq -r '.context_window.total_input_tokens // 0')
-TOTAL_OUTPUT=$(echo "$INPUT" | jq -r '.context_window.total_output_tokens // 0')
-
-TOTAL_COST=$(echo "$INPUT" | jq -r '.cost.total_cost_usd // 0')
-TOTAL_DURATION_MS=$(echo "$INPUT" | jq -r '.cost.total_duration_ms // 0')
-TOTAL_API_DURATION_MS=$(echo "$INPUT" | jq -r '.cost.total_api_duration_ms // 0')
-LINES_ADDED=$(echo "$INPUT" | jq -r '.cost.total_lines_added // 0')
-LINES_REMOVED=$(echo "$INPUT" | jq -r '.cost.total_lines_removed // 0')
-
-EXCEEDS_200K=$(echo "$INPUT" | jq -r '.exceeds_200k_tokens // false')
 if [ "$EXCEEDS_200K" = "true" ]; then EXCEEDS_200K_INT=1; else EXCEEDS_200K_INT=0; fi
-
-MODEL_ID=$(echo "$INPUT" | jq -r '.model.id // "unknown"')
-SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // "unknown"')
 
 # ── Write Prometheus metrics file (atomic via rename) ──────
 cat > "${METRICS_TMP}" <<PROM

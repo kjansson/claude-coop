@@ -15,23 +15,16 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DOCKER_DIR="${PROJECT_ROOT}/docker"
 
 PREFIX="claude-env"
+LOG_PREFIX="${PREFIX}"
+
+# Source shared library (colours, logging, container runtime detection)
+source "${SCRIPT_DIR}/lib.sh"
 
 GRAFANA_PORT="${GRAFANA_PORT:-3000}"
 PROMETHEUS_PORT="${PROMETHEUS_PORT:-9090}"
 ENVOY_ADMIN_PORT="${ENVOY_ADMIN_PORT:-9901}"
 
 DOMAINS_FILE="${PROJECT_ROOT}/config/domains.txt"
-
-# ─── Detect container runtime (podman or docker) ──────────────
-if command -v podman &>/dev/null; then
-    DOCKER=podman
-elif command -v docker &>/dev/null; then
-    DOCKER=docker
-else
-    err "Neither docker nor podman found in PATH."
-    exit 1
-fi
-export DOCKER
 
 MOUNT_DIR="${1:-$(pwd)}"
 # If first arg is a flag, use current dir
@@ -100,31 +93,22 @@ CLAUDE_CONFIG_VOLUME="${PREFIX}-${PROJECT_ID}-claude-config"
 
 export ENVOY_CONTAINER NETWORK_NAME
 
-# ─── Terminal colours ──────────────────────────────────────────
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-NC='\033[0m'
-
-log()   { echo -e "${BLUE}[claude-env]${NC} $*"; }
-ok()    { echo -e "${GREEN}[claude-env]${NC} $*"; }
-warn()  { echo -e "${YELLOW}[claude-env]${NC} $*"; }
-err()   { echo -e "${RED}[claude-env]${NC} $*" >&2; }
-
-# ─── Cleanup persistent volumes ─────────────────────────────────
-if [[ "${CLEANUP}" == true ]]; then
-    log "Cleaning up persistent volumes for project '${PROJECT_BASENAME}' (${PROJECT_ID})..."
-
-    # Stop any running containers for this project first
+# ─── Shared helpers ──────────────────────────────────────────
+stop_containers() {
     for ctn in "${CLAUDE_CONTAINER}" "${GRAFANA_CONTAINER}" "${PROMETHEUS_CONTAINER}" "${ENVOY_CONTAINER}"; do
         if ${DOCKER} inspect "${ctn}" &>/dev/null; then
             log "  Stopping ${ctn}..."
             ${DOCKER} rm -f "${ctn}" &>/dev/null || true
         fi
     done
+}
+
+# ─── Cleanup persistent volumes ─────────────────────────────────
+if [[ "${CLEANUP}" == true ]]; then
+    log "Cleaning up persistent volumes for project '${PROJECT_BASENAME}' (${PROJECT_ID})..."
+
+    # Stop any running containers for this project first
+    stop_containers
 
     if ${DOCKER} network inspect "${NETWORK_NAME}" &>/dev/null; then
         log "  Removing network ${NETWORK_NAME}..."
@@ -155,12 +139,7 @@ cleanup() {
     echo ""
     log "Shutting down Claude Code environment..."
 
-    for ctn in "${CLAUDE_CONTAINER}" "${GRAFANA_CONTAINER}" "${PROMETHEUS_CONTAINER}" "${ENVOY_CONTAINER}"; do
-        if ${DOCKER} inspect "${ctn}" &>/dev/null; then
-            log "  Stopping ${ctn}..."
-            ${DOCKER} rm -f "${ctn}" &>/dev/null || true
-        fi
-    done
+    stop_containers
 
     if ${DOCKER} network inspect "${NETWORK_NAME}" &>/dev/null; then
         log "  Removing network ${NETWORK_NAME}..."
@@ -170,6 +149,10 @@ cleanup() {
     if [[ -n "${ENVOY_CONFIG_DIR:-}" && -d "${ENVOY_CONFIG_DIR}" ]]; then
         log "  Removing temp config dir: ${ENVOY_CONFIG_DIR}"
         rm -rf "${ENVOY_CONFIG_DIR}"
+    fi
+
+    if [[ -n "${TEMP_DOMAINS_FILE:-}" && -f "${TEMP_DOMAINS_FILE}" ]]; then
+        rm -f "${TEMP_DOMAINS_FILE}"
     fi
 
     ok "Cleanup complete. Persistent volumes retained for project '${PROJECT_BASENAME}'."
@@ -240,20 +223,31 @@ fi
 ENVOY_CONFIG_DIR="${PROJECT_ROOT}/.cache/envoy-config"
 mkdir -p "${ENVOY_CONFIG_DIR}"
 
-# If --whitelist was passed, temporarily append extra domains
+# If --whitelist was passed, create a temp copy of domains.txt with extra domains
+TEMP_DOMAINS_FILE=""
+GENERATE_DOMAINS_FILE="${DOMAINS_FILE}"
 if [[ -n "${EXTRA_WHITELIST}" ]]; then
     log "Adding extra whitelist domains: ${EXTRA_WHITELIST}"
+    TEMP_DOMAINS_FILE="$(mktemp)"
+    cp "${DOMAINS_FILE}" "${TEMP_DOMAINS_FILE}"
     IFS=',' read -ra EXTRA_DOMAINS <<< "${EXTRA_WHITELIST}"
     for domain in "${EXTRA_DOMAINS[@]}"; do
         domain=$(echo "${domain}" | xargs)  # trim whitespace
-        if ! grep -qxF "${domain}" "${DOMAINS_FILE}"; then
-            echo "${domain}" >> "${DOMAINS_FILE}"
+        if ! grep -qxF "${domain}" "${TEMP_DOMAINS_FILE}"; then
+            echo "${domain}" >> "${TEMP_DOMAINS_FILE}"
         fi
     done
+    GENERATE_DOMAINS_FILE="${TEMP_DOMAINS_FILE}"
 fi
 
 log "Generating Envoy config from template..."
-"${SCRIPT_DIR}/whitelist.sh" generate --config-dir "${ENVOY_CONFIG_DIR}"
+DOMAINS_FILE="${GENERATE_DOMAINS_FILE}" "${SCRIPT_DIR}/whitelist.sh" generate --config-dir "${ENVOY_CONFIG_DIR}"
+
+# Clean up temp domains file now that config is generated
+if [[ -n "${TEMP_DOMAINS_FILE}" && -f "${TEMP_DOMAINS_FILE}" ]]; then
+    rm -f "${TEMP_DOMAINS_FILE}"
+    TEMP_DOMAINS_FILE=""
+fi
 
 # ─── Start Envoy ──────────────────────────────────────────────
 log "Starting Envoy proxy..."

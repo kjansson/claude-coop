@@ -11,42 +11,21 @@
 #
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-DOMAINS_FILE="${PROJECT_ROOT}/config/domains.txt"
+DOMAINS_FILE="${DOMAINS_FILE:-${PROJECT_ROOT}/config/domains.txt}"
 TEMPLATE_FILE="${PROJECT_ROOT}/docker/envoy/envoy.yaml.tpl"
 
 PREFIX="claude-env"
+LOG_PREFIX="whitelist"
 ENVOY_CONTAINER="${ENVOY_CONTAINER:-${PREFIX}-envoy}"
 ENVOY_CONFIG_DIR="${ENVOY_CONFIG_DIR:-${PROJECT_ROOT}/.cache/envoy-config}"
 ENVOY_IMAGE="${PREFIX}-envoy-img"
 NETWORK_NAME="${NETWORK_NAME:-${PREFIX}-net}"
 
-# ─── Detect container runtime (podman or docker) ──────────────
-if [[ -n "${DOCKER:-}" ]]; then
-    : # inherited from parent (claude-env.sh)
-elif command -v docker &>/dev/null; then
-    DOCKER=docker
-elif command -v podman &>/dev/null; then
-    DOCKER=podman
-else
-    err "Neither docker nor podman found in PATH."
-    exit 1
-fi
-
-# ─── Terminal colours ────────────────────────────────────────
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m'
-
-log()  { echo -e "${BLUE}[whitelist]${NC} $*"; }
-ok()   { echo -e "${GREEN}[whitelist]${NC} $*"; }
-warn() { echo -e "${YELLOW}[whitelist]${NC} $*"; }
-err()  { echo -e "${RED}[whitelist]${NC} $*" >&2; }
+# Source shared library (colours, logging, container runtime detection)
+source "${SCRIPT_DIR}/lib.sh"
 
 # ─── Helpers ────────────────────────────────────────────────
 
@@ -58,6 +37,19 @@ read_domains() {
         exit 1
     fi
     sed 's/#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//' "${DOMAINS_FILE}" | grep -v '^$'
+}
+
+# Check if a value is present in a bash array passed by name.
+# Usage: is_in_array "value" "${array[@]}"
+is_in_array() {
+    local needle="$1"; shift
+    local item
+    for item in "$@"; do
+        if [[ "${item}" == "${needle}" ]]; then
+            return 0
+        fi
+    done
+    return 1
 }
 
 # ─── Commands ───────────────────────────────────────────────
@@ -180,15 +172,7 @@ cmd_generate() {
     done
     for d in "${wildcard_domains[@]}"; do
         local bare="${d#\*.}"
-        # Only add bare domain if not already in exact list
-        local already=false
-        for e in "${exact_domains[@]}"; do
-            if [[ "${e}" == "${bare}" ]]; then
-                already=true
-                break
-            fi
-        done
-        if [[ "${already}" == false ]]; then
+        if ! is_in_array "${bare}" "${exact_domains[@]}"; then
             lua_allowed+="                            [\"${bare}\"] = true,\n"
         fi
     done
@@ -214,15 +198,7 @@ cmd_generate() {
     for d in "${wildcard_domains[@]}"; do
         sni_names+="              - \"${d}\"\n"
         local bare="${d#\*.}"
-        # Add the bare domain if not already in exact list
-        local already=false
-        for e in "${exact_domains[@]}"; do
-            if [[ "${e}" == "${bare}" ]]; then
-                already=true
-                break
-            fi
-        done
-        if [[ "${already}" == false ]]; then
+        if ! is_in_array "${bare}" "${exact_domains[@]}"; then
             sni_names+="              - \"${bare}\"\n"
         fi
     done

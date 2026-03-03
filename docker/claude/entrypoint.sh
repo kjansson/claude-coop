@@ -1,17 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 ENVOY_IP="${ENVOY_IP:-envoy}"
 ENVOY_HTTP_PORT="${ENVOY_HTTP_PORT:-10000}"
 ENVOY_HTTPS_PORT="${ENVOY_HTTPS_PORT:-10001}"
 
-echo "============================================"
-echo "  Claude Code Docker Environment"
-echo "============================================"
-echo "  Envoy proxy: ${ENVOY_IP}"
-echo "  HTTP port:   ${ENVOY_HTTP_PORT}"
-echo "  HTTPS port:  ${ENVOY_HTTPS_PORT}"
-echo "============================================"
+echo "Claude Code Docker Environment (proxy=${ENVOY_IP})"
 
 # Set up iptables to transparently redirect all outgoing traffic through Envoy.
 # This requires NET_ADMIN capability on the container.
@@ -24,8 +18,6 @@ if [ -z "${RESOLVED_ENVOY_IP}" ]; then
     echo "WARNING: Could not resolve Envoy IP from '${ENVOY_IP}', using as-is"
     RESOLVED_ENVOY_IP="${ENVOY_IP}"
 fi
-echo "Resolved Envoy IP: ${RESOLVED_ENVOY_IP}"
-
 # Ensure the claude user owns their home directory
 # (first run on a fresh volume needs this)
 chown claude:claude /home/claude
@@ -57,8 +49,6 @@ else
     echo "${SETTINGS_PATCH}" > "${CLAUDE_SETTINGS}"
 fi
 chown -R claude:claude /home/claude/.claude
-echo "Configured status line -> /usr/local/lib/statusline.sh"
-echo "Configured hooks -> /usr/local/lib/hooks-metrics.sh"
 
 # ── NAT rules: transparently redirect HTTP/HTTPS to Envoy ─────
 iptables -t nat -A OUTPUT -p tcp --dport 80 -j DNAT --to-destination "${RESOLVED_ENVOY_IP}:${ENVOY_HTTP_PORT}"
@@ -67,7 +57,6 @@ iptables -t nat -A POSTROUTING -j MASQUERADE
 
 # ── Detect Docker network subnet for inter-container traffic ──
 DOCKER_SUBNET=$(ip route | grep -v default | grep 'src' | head -1 | awk '{print $1}')
-echo "Docker network subnet: ${DOCKER_SUBNET}"
 
 # ── Filter rules: lock down egress ────────────────────────────
 # Allow loopback (includes Docker embedded DNS at 127.0.0.11)
@@ -84,32 +73,10 @@ fi
 # Drop everything else — no direct internet access
 iptables -A OUTPUT -j DROP
 
-echo "iptables rules applied:"
-echo "  - HTTP  :80  → ${RESOLVED_ENVOY_IP}:${ENVOY_HTTP_PORT}"
-echo "  - HTTPS :443 → ${RESOLVED_ENVOY_IP}:${ENVOY_HTTPS_PORT}"
-echo "  - Docker subnet ${DOCKER_SUBNET}: ALLOWED"
-echo "  - All other egress: BLOCKED"
-
 # Drop to the claude user and start Claude Code
 # gosu preserves the full environment (unlike su which can strip vars via PAM)
 export HOME=/home/claude
 export USER=claude
-
-echo ""
-echo "Testing connectivity to Prometheus OTLP receiver..."
-if curl -sf -o /dev/null --max-time 5 "http://prometheus:9090/-/healthy" 2>/dev/null; then
-    echo "  ✓ Prometheus is healthy (OTLP endpoint: http://prometheus:9090/api/v1/otlp)"
-else
-    echo "  ✗ WARNING: Cannot reach Prometheus"
-fi
-
-echo ""
-echo "OTel environment:"
-env | grep -E '^(OTEL_|CLAUDE_CODE_ENABLE)' | sort
-echo ""
-echo "Starting Claude Code (OTel metrics → Prometheus OTLP receiver)..."
-echo "============================================"
-echo ""
 
 # ── Write static environment info metrics ─────────────────
 YOLO_INT=0
@@ -129,12 +96,9 @@ claude_env_yolo_mode ${YOLO_INT}
 # TYPE claude_env_teams_mode gauge
 claude_env_teams_mode ${TEAMS_INT}
 PROM
-echo "Environment info metrics written (workspace=${WORKSPACE_NAME:-unknown}, yolo=${CLAUDE_YOLO:-false}, teams=${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-false})"
 
 # ── Start the status-line metrics HTTP server (port 9465) ─
-echo "Starting status-line metrics server on :9465..."
 gosu claude node /usr/local/lib/metrics-server.mjs &
-echo "  Metrics server PID: $!"
 
 CLAUDE_ARGS=""
 if [ "${CLAUDE_YOLO:-false}" = "true" ]; then
