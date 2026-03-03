@@ -40,14 +40,14 @@ These are aggregated by a lightweight Node.js server on port 9465 and scraped by
 ### Prerequisites
 
 - Docker installed and running
-- `ANTHROPIC_API_KEY` environment variable set
 
 ### Launch
 
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
 ./scripts/claude-coop.sh
 ```
+
+On first run, Claude Code will prompt you to authenticate interactively. Your auth token is stored in a persistent Docker volume (`/home/claude/.claude/`), so you only need to log in once per workspace.
 
 This will:
 1. Build the custom Docker images (first run only)
